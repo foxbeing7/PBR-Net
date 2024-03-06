@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Aputure 3D viewer</title>
+    <style type="text/css">
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        .panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        #uploadPrompt {
+            color: black;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h3>Shell:</h3>
+        <p>Scroll to zoom the model</p>
+        <p>Slide here ↓ to adjust exposure</p>
+        <label for="exposureSlider">Exposure：</label>
+        <input type="range" id="exposureSlider" min="0" max="5" step="0.1" value="2.2"><br>
+		<p>Select hdr environment here ↓<p>
+        
+        <input type="file" id="hdrFileInput" accept=".hdr">
+        
+        <p id="uploadPrompt">load hdr file</p>
+		<p>save current img</p>
+		<button id="saveButton">Save Image</button>
+    </div>
+    <script src="js/three.js-r144/build/three.js"></script>
+    <script src="js/three.js-r144/examples/js/loaders/RGBELoader.js"></script>
+    <script src="js/three.js-r144/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        let scene, camera, renderer, controls, plane, autoRotate = false;
+
+        function init() {
+            
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+            });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.gammaOutput = true;
+            renderer.shadowMap.enabled = true;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMappingExposure = 1.8;
+            document.body.appendChild(renderer.domElement);
+			const textureLoader = new THREE.TextureLoader();
+            // 创建场景
+            scene = new THREE.Scene();
+
+            // 创建摄像头
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 0, 15);
+
+            // 创建 OrbitControls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+			// 创建背景
+			background = textureLoader.load('./res/background/test2_hdr.png')
+            // 加载默认的hdr
+            const defaultHDRUrl = './res/hdr/test2_hdr.hdr';
+            new THREE.RGBELoader().load(defaultHDRUrl, texture => {
+                const gen = new THREE.PMREMGenerator(renderer);
+                const envMap = gen.fromEquirectangular(texture).texture;
+							
+                scene.environment = envMap;
+                scene.background = background;
+            });
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', onKeyDown, false);
+
+            // 创建曝光度滑块
+            const exposureSlider = document.getElementById('exposureSlider');
+
+            // 添加事件监听器
+            exposureSlider.addEventListener('input', function () {
+                const exposureValue = parseFloat(exposureSlider.value);
+                renderer.toneMappingExposure = exposureValue;
+            });
+
+            // 添加文件输入元素的事件监听器
+            document.getElementById('hdrFileInput').addEventListener('change', handleHDRFileChange);
+			
+			
+			// 获取保存按钮元素
+			const saveButton = document.getElementById('saveButton');
+		
+			// 添加按钮点击事件监听器
+			saveButton.addEventListener('click', function () {
+				// 调用保存图片的函数
+				saveSceneImage();
+			});
+            // 在 init 函数中加载法线纹理
+            const normalMapLoader = new THREE.TextureLoader();
+            const roughnessMapLoader = new THREE.TextureLoader();
+            const albedoMapLoader = new THREE.TextureLoader();
+
+            // 加载默认的材质
+            const defaultAlbedoUrl = './res/img/Huge/albedo.png';
+            const defaultNormalUrl = './res/img/Huge/normal.png';
+            const defaultRoughnessUrl = './res/img/Huge/roughness.png';
+            const defaultSpecularUrl = './res/img/Huge/specular.png';
+			const defaultAlphaUrl = './res/img/Huge/mask.png';
+            createMesh(defaultAlbedoUrl, defaultNormalUrl, defaultRoughnessUrl, defaultSpecularUrl, defaultAlphaUrl);
+        }
+
+        function handleHDRFileChange(event) {
+            const fileInput = event.target;
+            const files = fileInput.files;
+
+            if (files.length > 0) {
+                const hdrFile = files[0];
+                loadHDRFile(hdrFile);
+            } else {
+                // 用户未选择文件时显示提示
+                document.getElementById('uploadPrompt').innerText = 'upload hdr files';
+            }
+        }
+
+        function loadHDRFile(file) {
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                const hdrDataUrl = event.target.result;
+                updateHDR(hdrDataUrl);
+                // 隐藏提示
+                document.getElementById('uploadPrompt').innerText = '';
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        function updateHDR(hdrDataUrl) {
+            scene.environment = null;
+            scene.background = null;
+
+            new THREE.RGBELoader().load(hdrDataUrl, texture => {
+                const gen = new THREE.PMREMGenerator(renderer);
+                const envMap = gen.fromEquirectangular(texture).texture;
+
+                scene.environment = envMap;
+				// 更新背景和环境光
+                scene.background = envMap;
+            });
+        }
+
+		function createMesh(imageUrl, normalUrl, roughnessUrl, specularUrl, alphaUrl) {
+			if (plane) {
+				scene.remove(plane);
+			}
+
+			const textureLoader = new THREE.TextureLoader();
+
+			// 异步加载albedo贴图
+			textureLoader.load(imageUrl, (texture) => {
+				texture.encoding = THREE.sRGBEncoding;
+
+				const normalMap = textureLoader.load(normalUrl);
+				const roughnessMap = textureLoader.load(roughnessUrl);
+				const specularMap = textureLoader.load(specularUrl);
+				const alphaMap = textureLoader.load(alphaUrl);
+
+				// 根据albedo贴图的尺寸计算plane的大小
+				const aspectRatio = texture.image.width / texture.image.height;
+				const newWidth = 31;  // 设置一个基准宽度，可以根据需要调整
+				const newHeight = newWidth / aspectRatio;
+
+				const geometry = new THREE.PlaneGeometry(newWidth, newHeight);
+
+				const material = new THREE.MeshStandardMaterial({
+					map: texture,
+					normalMap: normalMap,
+					normalScale: new THREE.Vector2(5, 5),
+					specularMap: specularMap,
+					alphaMap: alphaMap,
+					transparent: true,
+					side: THREE.DoubleSide,
+				});
+
+				// 创建网格
+				plane = new THREE.Mesh(geometry, material);
+				updateBillboard(plane);
+
+				// 将网格添加到场景
+				scene.add(plane);
+			});
+		}
+
+
+
+		function updateBillboard(object) {
+			// 获取相机的位置
+			const camPos = camera.position.clone();
+
+			// 设置物体朝向相机
+			object.lookAt(camPos);
+		}
+
+		function animate() {
+		    requestAnimationFrame(animate);
+		
+		    if (autoRotate) {
+		        // 通过改变HDR环境光的旋转角度来模拟环境光的旋转
+		        camera.rotation.y += 1; // 调整旋转速度
+		    }
+		
+		    controls.update();
+		    updateBillboard(plane); // 确保对象一直面向相机
+		    renderer.render(scene, camera);
+		}
+
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+		
+		function saveSceneImage() {
+			// 请求下一帧再执行保存操作
+			requestAnimationFrame(() => {
+				// 弹出提示框获取用户输入的文件名
+				const fileName = window.prompt('Enter file name (without extension):', 'rendered_image');
+
+				if (fileName) {
+					// 创建一个新的 canvas 元素
+					const canvas = document.createElement('canvas');
+					const context = canvas.getContext('2d');
+
+					// 设置 canvas 大小与渲染器一致
+					canvas.width = window.innerWidth;
+					canvas.height = window.innerHeight;
+
+					// 将渲染器的内容绘制到 canvas 上
+					context.drawImage(renderer.domElement, 0, 0, canvas.width, canvas.height);
+
+					// 将 canvas 转换为DataURL
+					const dataURL = canvas.toDataURL('image/png');
+
+					// 创建一个链接元素，并设置其 href 为DataURL
+					const link = document.createElement('a');
+					link.href = dataURL;
+
+					// 设置下载文件的名称
+					link.download = fileName + '.png';
+
+					// 模拟点击链接进行下载
+					link.click();
+				}
+			});
+		}
+
+        function onKeyDown(event) {
+            if (event.key === 'A' || event.key === 'a') {
+                autoRotate = !autoRotate;
+            }
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
