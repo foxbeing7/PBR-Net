@@ -40,7 +40,10 @@
 😊rendered result
 <p align="center">
   <img src="dora.gif" width="1000" height="500" style="margin-right: 10px;">
-</p>
+</p>  
+
+😊Download pre-trained model from Google drive: [Lumos_att.pth](https://drive.google.com/drive/folders/1HFVA0P-Ho8sDMiP1w5ORTN7X0wI-5Xcd?usp=sharing) .then put into ./ckpts  
+
 If PBR-Net is helpful, please help to ⭐ this repo or recommend it to your friends.  
 
 ## 📧 Contact
