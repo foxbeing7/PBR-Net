@@ -44,6 +44,8 @@
 
 😊Download pre-trained model from Google drive: [Lumos_att.pth](https://drive.google.com/drive/folders/1HFVA0P-Ho8sDMiP1w5ORTN7X0wI-5Xcd?usp=sharing) .then put into ./ckpts  
 
+😊Then config your data path and run predict_mask.py to get albedo,normal...
+
 If PBR-Net is helpful, please help to ⭐ this repo or recommend it to your friends.  
 
 ## 📧 Contact
